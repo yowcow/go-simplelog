@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -21,15 +22,17 @@ type Logger struct {
 	out        io.Writer
 	prefix     string
 	calldepth  int
+	flags      int
 	errorLevel int
 }
 
-func New(out io.Writer, prefix string, calldepth int) *Logger {
+func New(out io.Writer, prefix string, flags int, calldepth int) *Logger {
 	return &Logger{
 		mu:         &sync.Mutex{},
 		out:        out,
 		prefix:     prefix,
 		calldepth:  calldepth,
+		flags:      flags,
 		errorLevel: Debug,
 	}
 }
@@ -63,16 +66,24 @@ func (l *Logger) write(errorLevel int, file string, line int, msgs ...interface{
 
 	buf := bufPool.Get().(*bytes.Buffer)
 	buf.WriteString(l.prefix)
-	buf.WriteString(file)
-	buf.WriteByte(':')
-	buf.WriteString(strconv.Itoa(line))
+
+	if l.flags&(log.Lshortfile|log.Llongfile) != 0 {
+		if l.flags&log.Lshortfile != 0 {
+			buf.WriteString(filepath.Base(file))
+		} else if l.flags&log.Llongfile != 0 {
+			buf.WriteString(file)
+		}
+
+		buf.WriteByte(':')
+		buf.WriteString(strconv.Itoa(line))
+		buf.WriteByte(':')
+	}
+
 	buf.WriteString(" [")
 	buf.WriteString(errorLevelString(errorLevel))
-	buf.WriteString("]")
+	buf.WriteString("] ")
 
 	for _, msg := range msgs {
-		buf.WriteByte(' ')
-
 		switch msg.(type) {
 		case string:
 			buf.WriteString(msg.(string))
@@ -93,18 +104,15 @@ func (l *Logger) Output(errorLevel int, v ...interface{}) {
 		return
 	}
 
-	var filename string
 	var line int
 	_, file, line, ok := runtime.Caller(l.calldepth)
 
 	if !ok {
-		filename = "???"
+		file = "???"
 		line = 0
-	} else {
-		filename = filepath.Base(file)
 	}
 
-	l.write(errorLevel, filename, line, v...)
+	l.write(errorLevel, file, line, v...)
 }
 
 func (l *Logger) Debug(v ...interface{}) {
