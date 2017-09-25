@@ -7,13 +7,14 @@ Simple logging utility to be used as:
 
 ```go
 import (
+    "log"
     "os"
 
     "github.com/yowcow/go-simplelog"
 )
 
 func main() {
-    logger := simplelog.New(os.Stdout, "[hoge] ", 2)
+    logger := simplelog.New(os.Stdout, "[hoge] ", log.LstdFlags, 2)
     logger.SetLevel(simplelog.Info)
 
     logger.Debug("this", "won't", "be", "logged")
