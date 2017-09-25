@@ -55,12 +55,6 @@ func errorLevelString(errorLevel int) string {
 	}
 }
 
-var bufPool = sync.Pool{
-	New: func() interface{} {
-		return new(bytes.Buffer)
-	},
-}
-
 func Itoa(i int, pad int) string {
 	a := strconv.Itoa(i)
 
@@ -74,6 +68,12 @@ func Itoa(i int, pad int) string {
 	}
 
 	return a
+}
+
+var bufPool = sync.Pool{
+	New: func() interface{} {
+		return new(bytes.Buffer)
+	},
 }
 
 func (l *Logger) Write(errorLevel int, now time.Time, file string, line int, msgs ...interface{}) {
