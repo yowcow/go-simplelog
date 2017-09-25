@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	logger := simplelog.New(os.Stdout, "[example]", log.Lshortfile, 2)
+	logger := simplelog.New(os.Stdout, "[example]", log.Lshortfile|log.Ldate|log.Lmicroseconds, 2)
 	logger.SetLevel(simplelog.Info)
 
 	logger.Debug("this", "won't", "be", "logged")

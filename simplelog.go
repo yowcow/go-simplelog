@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"time"
 )
 
 const (
@@ -60,12 +61,57 @@ var bufPool = sync.Pool{
 	},
 }
 
-func (l *Logger) write(errorLevel int, file string, line int, msgs ...interface{}) {
+func Itoa(i int, pad int) string {
+	a := strconv.Itoa(i)
+
+	if fill := pad - len(a); fill > 0 {
+		buf := new(bytes.Buffer)
+		for ; fill > 0; fill-- {
+			buf.WriteByte('0')
+		}
+		buf.WriteString(a)
+		a = buf.String()
+	}
+
+	return a
+}
+
+func (l *Logger) Write(errorLevel int, now time.Time, file string, line int, msgs ...interface{}) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	buf := bufPool.Get().(*bytes.Buffer)
 	buf.WriteString(l.prefix)
+
+	if l.flags&(log.Ldate|log.Ltime|log.Lmicroseconds) != 0 {
+		if l.flags&log.LUTC != 0 {
+			now = now.UTC()
+		}
+		if l.flags&log.Ldate != 0 {
+			year, month, day := now.Date()
+			buf.WriteString(Itoa(year, 4))
+			buf.WriteByte('/')
+			buf.WriteString(Itoa(int(month), 2))
+			buf.WriteByte('/')
+			buf.WriteString(Itoa(day, 2))
+			buf.WriteByte(' ')
+		}
+		if l.flags&(log.Ltime|log.Lmicroseconds) != 0 {
+			hour, min, sec := now.Clock()
+			buf.WriteString(Itoa(hour, 2))
+			buf.WriteByte(':')
+			buf.WriteString(Itoa(min, 2))
+			buf.WriteByte(':')
+			buf.WriteString(Itoa(sec, 2))
+
+			if l.flags&log.Lmicroseconds != 0 {
+				buf.WriteByte('.')
+				buf.WriteString(Itoa(now.Nanosecond()/1e3, 6))
+			}
+
+			buf.WriteByte(' ')
+		}
+	}
 
 	if l.flags&(log.Lshortfile|log.Llongfile) != 0 {
 		if l.flags&log.Lshortfile != 0 {
@@ -77,9 +123,10 @@ func (l *Logger) write(errorLevel int, file string, line int, msgs ...interface{
 		buf.WriteByte(':')
 		buf.WriteString(strconv.Itoa(line))
 		buf.WriteByte(':')
+		buf.WriteByte(' ')
 	}
 
-	buf.WriteString(" [")
+	buf.WriteByte('[')
 	buf.WriteString(errorLevelString(errorLevel))
 	buf.WriteString("] ")
 
@@ -112,7 +159,7 @@ func (l *Logger) Output(errorLevel int, v ...interface{}) {
 		line = 0
 	}
 
-	l.write(errorLevel, file, line, v...)
+	l.Write(errorLevel, time.Now(), file, line, v...)
 }
 
 func (l *Logger) Debug(v ...interface{}) {

@@ -6,206 +6,181 @@ import (
 	"log"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func Test_errorLevelString(t *testing.T) {
+	type Case struct {
+		Input    int
+		Expected string
+	}
+	cases := []Case{
+		{Debug, "DEBUG"},
+		{Info, "INFO"},
+		{Error, "ERROR"},
+		{1234, "???"},
+	}
+
+	for _, c := range cases {
+		assert.Equal(t, c.Expected, errorLevelString(c.Input), "expecting "+c.Expected)
+	}
+}
+
+func Test_Itoa(t *testing.T) {
+	type Case struct {
+		Input    int
+		Padding  int
+		Expected string
+	}
+	cases := []Case{
+		{1, 1, "1"},
+		{2, 2, "02"},
+		{123, 4, "0123"},
+		{1234, 3, "1234"},
+	}
+
+	for _, c := range cases {
+		assert.Equal(t, c.Expected, Itoa(c.Input, c.Padding), "expecting "+c.Expected)
+	}
+}
 
 func newLogger(out io.Writer) *Logger {
 	return New(out, "[hoge] ", log.Lshortfile, 2)
 }
 
-func Test_Debug_on_1_arg(t *testing.T) {
-	logbuf := new(bytes.Buffer)
-	logger := newLogger(logbuf)
+func Test_Write(t *testing.T) {
+	type Case struct {
+		Flags    int
+		Expected string
+	}
+	cases := []Case{
+		{
+			Flags:    0,
+			Expected: "[hoge] [DEBUG] hogefuga123\n",
+		},
+		{
+			Flags:    log.LUTC | log.Ldate | log.Lmicroseconds | log.Lshortfile,
+			Expected: "[hoge] 2017/02/02 23:01:02.123456 file.txt:2345: [DEBUG] hogefuga123\n",
+		},
+		{
+			Flags:    log.Ldate | log.Ltime | log.Llongfile,
+			Expected: "[hoge] 2017/02/03 08:01:02 /path/to/file.txt:2345: [DEBUG] hogefuga123\n",
+		},
+	}
 
-	logger.Debug("hoge")
-	re := regexp.MustCompile(`\[DEBUG\] hoge\n$`)
+	for _, c := range cases {
+		logbuf := new(bytes.Buffer)
+		logger := New(logbuf, "[hoge] ", c.Flags, 2)
 
-	assert.True(t, re.Match(logbuf.Bytes()))
+		loc, _ := time.LoadLocation("Asia/Tokyo")
+
+		ts := time.Date(2017, 2, 3, 8, 1, 2, 123456789, loc)
+		logger.Write(Debug, ts, "/path/to/file.txt", 2345, "hoge", "fuga", 1, 2, 3)
+
+		assert.Equal(t, c.Expected, logbuf.String(), "expecting "+c.Expected)
+	}
 }
 
-func Test_Debug_on_multiple_args(t *testing.T) {
-	logbuf := new(bytes.Buffer)
-	logger := newLogger(logbuf)
+func Test_Debug(t *testing.T) {
+	type Case struct {
+		Input    []interface{}
+		Expected *regexp.Regexp
+	}
+	cases := []Case{
+		{
+			Input:    []interface{}{"hoge"},
+			Expected: regexp.MustCompile(`\[DEBUG\] hoge\n$`),
+		},
+		{
+			Input:    []interface{}{"hoge", 1, 2},
+			Expected: regexp.MustCompile(`\[DEBUG\] hoge12\n$`),
+		},
+	}
 
-	logger.Debug("hoge", 1, 2)
-	re := regexp.MustCompile(`\[DEBUG\] hoge12\n$`)
+	for _, c := range cases {
+		logbuf := new(bytes.Buffer)
+		logger := newLogger(logbuf)
 
-	assert.True(t, re.Match(logbuf.Bytes()))
+		logger.Debug(c.Input...)
+
+		assert.True(t, c.Expected.Match(logbuf.Bytes()))
+	}
 }
 
 func Test_Debugf(t *testing.T) {
 	logbuf := new(bytes.Buffer)
 	logger := newLogger(logbuf)
 
-	logger.Debugf("hoge %s %d", "fuga", 123)
-	re := regexp.MustCompile(`\[DEBUG\] hoge fuga 123\n$`)
+	logger.Debugf("hoge %s -- %d", "fuga", 123)
+	re := regexp.MustCompile(`\[DEBUG\] hoge fuga -- 123\n$`)
 
 	assert.True(t, re.Match(logbuf.Bytes()))
 }
 
-func Test_Info_on_1_arg(t *testing.T) {
-	logbuf := new(bytes.Buffer)
-	logger := newLogger(logbuf)
+func Test_Debug_for_levels(t *testing.T) {
+	type Case struct {
+		Level       int
+		ShouldWrite bool
+	}
+	cases := []Case{
+		{Debug, true},
+		{Info, false},
+		{Error, false},
+	}
 
-	logger.Info("hoge")
-	re := regexp.MustCompile(`\[INFO\] hoge\n$`)
+	for _, c := range cases {
+		logbuf := new(bytes.Buffer)
+		logger := newLogger(logbuf)
+		logger.SetLevel(c.Level)
 
-	assert.True(t, re.Match(logbuf.Bytes()))
+		logger.Debug("hoge")
+
+		assert.True(t, (len(logbuf.String()) > 0) == c.ShouldWrite)
+	}
 }
 
-func Test_Info_on_multiple_args(t *testing.T) {
-	logbuf := new(bytes.Buffer)
-	logger := newLogger(logbuf)
+func Test_Info_for_levels(t *testing.T) {
+	type Case struct {
+		Level       int
+		ShouldWrite bool
+	}
+	cases := []Case{
+		{Debug, true},
+		{Info, true},
+		{Error, false},
+	}
 
-	logger.Info("hoge", 1, 2)
-	re := regexp.MustCompile(`\[INFO\] hoge12\n$`)
+	for _, c := range cases {
+		logbuf := new(bytes.Buffer)
+		logger := newLogger(logbuf)
+		logger.SetLevel(c.Level)
 
-	assert.True(t, re.Match(logbuf.Bytes()))
+		logger.Info("hoge")
+
+		assert.True(t, (len(logbuf.String()) > 0) == c.ShouldWrite)
+	}
 }
 
-func Test_Infof(t *testing.T) {
-	logbuf := new(bytes.Buffer)
-	logger := newLogger(logbuf)
+func Test_Error_for_levels(t *testing.T) {
+	type Case struct {
+		Level       int
+		ShouldWrite bool
+	}
+	cases := []Case{
+		{Debug, true},
+		{Info, true},
+		{Error, true},
+	}
 
-	logger.Infof("hoge %s %d", "fuga", 123)
-	re := regexp.MustCompile(`\[INFO\] hoge fuga 123\n$`)
+	for _, c := range cases {
+		logbuf := new(bytes.Buffer)
+		logger := newLogger(logbuf)
+		logger.SetLevel(c.Level)
 
-	assert.True(t, re.Match(logbuf.Bytes()))
-}
+		logger.Error("hoge")
 
-func Test_Error_on_1_arg(t *testing.T) {
-	logbuf := new(bytes.Buffer)
-	logger := newLogger(logbuf)
-
-	logger.Error("hoge")
-	re := regexp.MustCompile(`\[ERROR\] hoge\n$`)
-
-	assert.True(t, re.Match(logbuf.Bytes()))
-}
-
-func Test_Error_on_multiple_args(t *testing.T) {
-	logbuf := new(bytes.Buffer)
-	logger := newLogger(logbuf)
-
-	logger.Error("hoge", 1, 2)
-	re := regexp.MustCompile(`\[ERROR\] hoge12\n$`)
-
-	assert.True(t, re.Match(logbuf.Bytes()))
-}
-
-func Test_Errorf(t *testing.T) {
-	logbuf := new(bytes.Buffer)
-	logger := newLogger(logbuf)
-
-	logger.Errorf("hoge %s %d", "fuga", 123)
-	re := regexp.MustCompile(`\[ERROR\] hoge fuga 123\n$`)
-
-	assert.True(t, re.Match(logbuf.Bytes()))
-}
-
-func Test_Debug_on_level_debug(t *testing.T) {
-	logbuf := new(bytes.Buffer)
-	logger := newLogger(logbuf)
-	logger.SetLevel(Debug)
-
-	logger.Debug("hoge")
-	re := regexp.MustCompile(`hoge\n$`)
-
-	assert.True(t, re.Match(logbuf.Bytes()))
-}
-
-func Test_Debugf_on_level_debug(t *testing.T) {
-	logbuf := new(bytes.Buffer)
-	logger := newLogger(logbuf)
-	logger.SetLevel(Debug)
-
-	logger.Debugf("%s", "hoge")
-	re := regexp.MustCompile(`hoge\n$`)
-
-	assert.True(t, re.Match(logbuf.Bytes()))
-}
-
-func Test_Debug_on_level_info(t *testing.T) {
-	logbuf := new(bytes.Buffer)
-	logger := newLogger(logbuf)
-	logger.SetLevel(Info)
-
-	logger.Debug("hoge")
-
-	assert.Equal(t, "", logbuf.String())
-}
-
-func Test_Debugf_on_level_info(t *testing.T) {
-	logbuf := new(bytes.Buffer)
-	logger := newLogger(logbuf)
-	logger.SetLevel(Info)
-
-	logger.Debugf("%s", "hoge")
-
-	assert.Equal(t, "", logbuf.String())
-}
-
-func Test_Info_on_level_info(t *testing.T) {
-	logbuf := new(bytes.Buffer)
-	logger := newLogger(logbuf)
-	logger.SetLevel(Info)
-
-	logger.Info("hoge")
-	re := regexp.MustCompile(`hoge\n$`)
-
-	assert.True(t, re.Match(logbuf.Bytes()))
-}
-
-func Test_Infof_on_level_info(t *testing.T) {
-	logbuf := new(bytes.Buffer)
-	logger := newLogger(logbuf)
-	logger.SetLevel(Info)
-
-	logger.Infof("%s", "hoge")
-	re := regexp.MustCompile(`hoge\n$`)
-
-	assert.True(t, re.Match(logbuf.Bytes()))
-}
-
-func Test_Info_on_level_error(t *testing.T) {
-	logbuf := new(bytes.Buffer)
-	logger := newLogger(logbuf)
-	logger.SetLevel(Error)
-
-	logger.Info("hoge")
-
-	assert.Equal(t, "", logbuf.String())
-}
-
-func Test_Infof_on_level_error(t *testing.T) {
-	logbuf := new(bytes.Buffer)
-	logger := newLogger(logbuf)
-	logger.SetLevel(Error)
-
-	logger.Infof("%s", "hoge")
-
-	assert.Equal(t, "", logbuf.String())
-}
-
-func Test_Error_on_level_error(t *testing.T) {
-	logbuf := new(bytes.Buffer)
-	logger := newLogger(logbuf)
-	logger.SetLevel(Error)
-
-	logger.Error("hoge")
-	re := regexp.MustCompile(`hoge\n$`)
-
-	assert.True(t, re.Match(logbuf.Bytes()))
-}
-
-func Test_Errorf_on_level_error(t *testing.T) {
-	logbuf := new(bytes.Buffer)
-	logger := newLogger(logbuf)
-	logger.SetLevel(Error)
-
-	logger.Errorf("%s", "hoge")
-	re := regexp.MustCompile(`hoge\n$`)
-
-	assert.True(t, re.Match(logbuf.Bytes()))
+		assert.True(t, (len(logbuf.String()) > 0) == c.ShouldWrite)
+	}
 }
